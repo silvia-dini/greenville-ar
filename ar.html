@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>GreenVille AR · Scan Marker</title>
+<!-- MindAR + Three.js for WebAR -->
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#000;font-family:'Outfit',sans-serif;overflow:hidden;width:100vw;height:100vh;}
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&family=Cormorant+Garamond:ital,wght@0,300;1,400&display=swap');
+
+/* AR Container */
+#ar-wrap{position:fixed;inset:0;z-index:1;}
+
+/* Loading screen */
+#loading{
+  position:fixed;inset:0;z-index:100;
+  background:linear-gradient(145deg,#06090f,#0d1828);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  transition:opacity .8s ease;
+}
+#loading.hide{opacity:0;pointer-events:none;}
+.ld-logo{font-family:'Cormorant Garamond',serif;font-size:2.8rem;color:#e8c97a;font-style:italic;margin-bottom:6px;}
+.ld-sub{font-size:.62rem;letter-spacing:5px;color:#6a80a0;text-transform:uppercase;margin-bottom:40px;}
+.ld-spinner{width:44px;height:44px;border-radius:50%;border:2px solid rgba(201,168,76,.15);border-top-color:#c9a840;animation:spin .9s linear infinite;margin-bottom:16px;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ld-status{font-size:.65rem;color:#6a80a0;letter-spacing:2px;}
+
+/* Permission screen -->
+#perm-screen{
+  position:fixed;inset:0;z-index:99;
+  background:linear-gradient(145deg,#06090f,#0d1828);
+  display:none;flex-direction:column;align-items:center;justify-content:center;
+  padding:30px;text-align:center;
+}
+#perm-screen.show{display:flex;}
+.perm-icon{font-size:3.5rem;margin-bottom:20px;}
+.perm-title{font-family:'Cormorant Garamond',serif;font-size:1.8rem;color:#fff;margin-bottom:10px;}
+.perm-desc{font-size:.72rem;color:#6a80a0;line-height:1.7;margin-bottom:30px;max-width:280px;}
+.perm-btn{
+  background:linear-gradient(135deg,#e8c97a,#c9a040);color:#06090f;
+  border:none;padding:14px 40px;border-radius:2px;
+  font-size:.75rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;cursor:pointer;
+}
+
+/* Top HUD */
+#hud-top{
+  position:fixed;top:0;left:0;right:0;z-index:50;
+  padding:14px 18px;
+  background:linear-gradient(180deg,rgba(6,9,15,.9) 0%,transparent 100%);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.hud-brand{font-family:'Cormorant Garamond',serif;font-size:1.2rem;color:#e8c97a;font-style:italic;}
+#hud-status{
+  font-size:.58rem;letter-spacing:2px;text-transform:uppercase;
+  padding:4px 14px;border-radius:20px;
+  background:rgba(6,9,15,.7);border:1px solid rgba(255,165,0,.3);color:#ffaa44;
+  transition:.3s;
+}
+#hud-status.found{border-color:rgba(78,220,120,.4);color:#4edc78;}
+
+/* Scan hint */
+#scan-hint{
+  position:fixed;bottom:120px;left:50%;transform:translateX(-50%);
+  z-index:50;text-align:center;
+  animation:float 3s ease-in-out infinite;
+  transition:opacity .5s;
+}
+#scan-hint.hide{opacity:0;pointer-events:none;}
+@keyframes float{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(-8px)}}
+.sh-frame{
+  width:180px;height:180px;border-radius:12px;
+  border:2px solid rgba(201,168,76,.5);
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(6,9,15,.3);backdrop-filter:blur(4px);
+  margin:0 auto 14px;position:relative;
+}
+/* Corner decorations */
+.sh-frame::before,.sh-frame::after{
+  content:'';position:absolute;width:28px;height:28px;
+  border-color:#c9a840;border-style:solid;
+}
+.sh-frame::before{top:-2px;left:-2px;border-width:3px 0 0 3px;border-radius:8px 0 0 0;}
+.sh-frame::after{bottom:-2px;right:-2px;border-width:0 3px 3px 0;border-radius:0 0 8px 0;}
+.sh-corner-tr{position:absolute;top:-2px;right:-2px;width:28px;height:28px;border:3px solid #c9a840;border-left:none;border-bottom:none;border-radius:0 8px 0 0;}
+.sh-corner-bl{position:absolute;bottom:-2px;left:-2px;width:28px;height:28px;border:3px solid #c9a840;border-right:none;border-top:none;border-radius:0 0 0 8px;}
+.sh-icon{font-size:2.5rem;opacity:.7;}
+.sh-scan-line{
+  position:absolute;left:10%;right:10%;height:2px;
+  background:linear-gradient(90deg,transparent,#c9a840,transparent);
+  animation:scan-move 2s ease-in-out infinite;
+  box-shadow:0 0 8px #c9a840;
+}
+@keyframes scan-move{0%{top:15%}100%{top:85%}}
+.sh-text{font-size:.65rem;color:rgba(255,255,255,.7);letter-spacing:2px;text-transform:uppercase;}
+.sh-sub{font-size:.55rem;color:#6a80a0;margin-top:5px;}
+
+/* Info card (muncul saat marker ditemukan) */
+#info-card{
+  position:fixed;bottom:0;left:0;right:0;z-index:50;
+  background:rgba(6,9,15,.95);backdrop-filter:blur(20px);
+  border-top:1px solid rgba(201,168,76,.2);border-radius:16px 16px 0 0;
+  padding:14px 18px 36px;
+  transform:translateY(100%);transition:transform .4s cubic-bezier(.25,.8,.25,1);
+}
+#info-card.show{transform:translateY(0);}
+.ic-handle{width:32px;height:3px;background:rgba(255,255,255,.12);border-radius:2px;margin:0 auto 14px;}
+.ic-title{font-family:'Cormorant Garamond',serif;font-size:1.3rem;color:#fff;margin-bottom:3px;}
+.ic-sub{font-size:.58rem;color:#6a80a0;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px;}
+.ic-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;}
+.ic-box{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:10px 8px;text-align:center;}
+.ic-box-v{font-size:.82rem;font-weight:700;color:#fff;display:block;}
+.ic-box-k{font-size:.5rem;letter-spacing:1px;text-transform:uppercase;color:#6a80a0;margin-top:2px;}
+.ic-blok-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px;}
+.ic-blok{border-radius:6px;padding:10px 6px;text-align:center;border:1px solid;cursor:pointer;transition:.2s;}
+.ic-blok:active{transform:scale(.96);}
+.ic-blok-A{background:rgba(232,168,122,.1);border-color:rgba(232,168,122,.4);}
+.ic-blok-B{background:rgba(122,184,255,.1);border-color:rgba(122,184,255,.4);}
+.ic-blok-C{background:rgba(144,224,144,.1);border-color:rgba(144,224,144,.4);}
+.ic-blok-name{font-size:.68rem;font-weight:700;color:#fff;display:block;}
+.ic-blok-price{font-size:.58rem;color:rgba(255,255,255,.55);display:block;margin-top:2px;}
+.ic-blok-type{font-size:.5rem;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);}
+.ic-btn{
+  display:block;width:100%;padding:13px;
+  background:linear-gradient(135deg,#e8c97a,#c9a040);color:#06090f;
+  border:none;border-radius:4px;
+  font-family:'Outfit',sans-serif;font-size:.72rem;font-weight:700;
+  letter-spacing:2px;text-transform:uppercase;cursor:pointer;
+  transition:.2s;text-decoration:none;text-align:center;
+}
+.ic-btn:hover{box-shadow:0 0 20px rgba(232,201,122,.4);}
+
+/* Blok label muncul di atas model AR -->
+#blok-labels{position:fixed;inset:0;z-index:45;pointer-events:none;}
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading">
+  <p class="ld-logo">GreenVille</p>
+  <p class="ld-sub">Augmented Reality ·</p>
+  <div class="ld-spinner"></div>
+  <p class="ld-status" id="ld-status-txt">Memuat sistem AR...</p>
+</div>
+
+<!-- Permission screen -->
+<div id="perm-screen">
+  <div class="perm-icon">📷</div>
+  <h2 class="perm-title">Izin Kamera</h2>
+  <p class="perm-desc">GreenVille AR membutuhkan akses kamera untuk mendeteksi marker dan menampilkan model 3D rumah.</p>
+  <button class="perm-btn" onclick="startAR()">Aktifkan Kamera</button>
+</div>
+
+<!-- AR container -->
+<div id="ar-wrap"></div>
+
+<!-- Top HUD -->
+<div id="hud-top">
+  <span class="hud-brand">GreenVille AR</span>
+  <span id="hud-status">🔍 Mencari Marker...</span>
+</div>
+
+<!-- Scan hint -->
+<div id="scan-hint">
+  <div class="sh-frame">
+    <div class="sh-corner-tr"></div>
+    <div class="sh-corner-bl"></div>
+    <div class="sh-scan-line"></div>
+    <span class="sh-icon">🏠</span>
+  </div>
+  <p class="sh-text">Arahkan ke Marker</p>
+  <p class="sh-sub">Cetak marker.svg lalu scan</p>
+</div>
+
+<!-- Info card -->
+<div id="info-card">
+  <div class="ic-handle"></div>
+  <h2 class="ic-title">GreenVille Estate</h2>
+  <p class="ic-sub">AR · 3D Interactive Housing ·</p>
+  <div class="ic-grid">
+    <div class="ic-box"><span class="ic-box-v">34</span><span class="ic-box-k">Total Unit</span></div>
+    <div class="ic-box"><span class="ic-box-v">3</span><span class="ic-box-k">Tipe Blok</span></div>
+    <div class="ic-box"><span class="ic-box-v">2,8 Ha</span><span class="ic-box-k">Luas Area</span></div>
+  </div>
+  <p style="font-size:.58rem;color:#6a80a0;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;">Pilih Blok untuk Room Tour</p>
+  <div class="ic-blok-grid">
+    <div class="ic-blok ic-blok-A" onclick="openTour('A')">
+      <span class="ic-blok-name">Blok A</span>
+      <span class="ic-blok-price">Rp 620 Jt</span>
+      <span class="ic-blok-type">Type 45</span>
+    </div>
+    <div class="ic-blok ic-blok-B" onclick="openTour('B')">
+      <span class="ic-blok-name">Blok B</span>
+      <span class="ic-blok-price">Rp 450 Jt</span>
+      <span class="ic-blok-type">Type 36</span>
+    </div>
+    <div class="ic-blok ic-blok-C" onclick="openTour('C')">
+      <span class="ic-blok-name">Blok C</span>
+      <span class="ic-blok-price">Rp 850 Jt</span>
+      <span class="ic-blok-type">Type 60</span>
+    </div>
+  </div>
+  <a class="ic-btn" href="index.html">🏡 Buka Maket 3D Interaktif</a>
+</div>
+
+<script>
+// ── Ganti URL ini setelah upload ke GitHub Pages ──
+const MAKET_URL = 'index.html'; // ganti dengan URL GitHub Pages kamu
+
+let mindarThree = null;
+let markerFound = false;
+
+// Status messages during load
+const statusMsgs = [
+  'Memuat sistem AR...',
+  'Menyiapkan kamera detector...',
+  'Loading MindAR engine...',
+  'Siap scan marker!'
+];
+let si = 0;
+const stEl = document.getElementById('ld-status-txt');
+const stInt = setInterval(() => {
+  si = (si + 1) % statusMsgs.length;
+  stEl.textContent = statusMsgs[si];
+}, 900);
+
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    clearInterval(stInt);
+    stEl.textContent = 'Siap!';
+    // Show permission screen
+    document.getElementById('loading').classList.add('hide');
+    document.getElementById('perm-screen').classList.add('show');
+  }, 2800);
+});
+
+async function startAR() {
+  document.getElementById('perm-screen').classList.remove('show');
+  document.getElementById('loading').classList.remove('hide');
+  document.getElementById('loading').style.opacity = '1';
+  stEl.textContent = 'Memulai AR...';
+
+  try {
+    mindarThree = new window.MINDAR.IMAGE.MindARThree({
+      container: document.getElementById('ar-wrap'),
+      imageTargetSrc: 'marker.mind', // compiled marker file
+      maxTrack: 1,
+      uiLoading: 'no',
+      uiError: 'no',
+      uiScanning: 'no',
+    });
+
+    const { renderer, scene, camera } = mindarThree;
+
+    // Lighting
+    const ambLight = new THREE.AmbientLight(0xfff8e8, 0.8);
+    scene.add(ambLight);
+    const dirLight = new THREE.DirectionalLight(0xfffae0, 1.4);
+    dirLight.position.set(3, 8, 5);
+    scene.add(dirLight);
+    const fillLight = new THREE.DirectionalLight(0xb8cce4, 0.5);
+    fillLight.position.set(-4, 3, -3);
+    scene.add(fillLight);
+
+    // Anchor (tied to marker)
+    const anchor = mindarThree.addAnchor(0);
+
+    // Build estate model on anchor
+    const estateGroup = buildEstateAR();
+    estateGroup.scale.setScalar(0.18);
+    estateGroup.rotation.x = -Math.PI / 2; // lay flat on marker
+    anchor.group.add(estateGroup);
+
+    // Floating title above estate
+    buildFloatingLabel(anchor.group);
+
+    // Animate estate rotation slowly
+    let rot = 0;
+    renderer.setAnimationLoop(() => {
+      rot += 0.005;
+      estateGroup.rotation.z = rot; // spin on z since x is flipped
+      renderer.render(scene, camera);
+    });
+
+    // Marker found/lost events
+    anchor.onTargetFound = () => {
+      markerFound = true;
+      document.getElementById('hud-status').textContent = '✓ Marker Terdeteksi';
+      document.getElementById('hud-status').classList.add('found');
+      document.getElementById('scan-hint').classList.add('hide');
+      setTimeout(() => document.getElementById('info-card').classList.add('show'), 400);
+    };
+    anchor.onTargetLost = () => {
+      markerFound = false;
+      document.getElementById('hud-status').textContent = '🔍 Mencari Marker...';
+      document.getElementById('hud-status').classList.remove('found');
+      document.getElementById('scan-hint').classList.remove('hide');
+      document.getElementById('info-card').classList.remove('show');
+    };
+
+    await mindarThree.start();
+    document.getElementById('loading').classList.add('hide');
+
+  } catch(err) {
+    console.error('AR Error:', err);
+    // Fallback: show demo mode without camera
+    document.getElementById('loading').classList.add('hide');
+    showFallback();
+  }
+}
+
+function showFallback() {
+  // If camera not available (desktop/no HTTPS), show info card directly
+  document.getElementById('scan-hint').classList.add('hide');
+  document.getElementById('hud-status').textContent = '💻 Mode Demo';
+  document.getElementById('hud-status').style.borderColor = 'rgba(122,184,255,.4)';
+  document.getElementById('hud-status').style.color = '#7ab8ff';
+  // show fallback 3D canvas
+  const wrap = document.getElementById('ar-wrap');
+  wrap.style.background = 'radial-gradient(ellipse at 30% 50%, #0d1f3a 0%, #06090f 70%)';
+  startFallback3D(wrap);
+  setTimeout(() => document.getElementById('info-card').classList.add('show'), 600);
+}
+
+// ── Fallback 3D (no camera) ──
+function startFallback3D(container) {
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  container.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 500);
+  camera.position.set(4, 12, 18);
+  camera.lookAt(0, 0.5, 0);
+
+  const ambLight = new THREE.AmbientLight(0xfff8e8, 0.6);
+  scene.add(ambLight);
+  const dirLight = new THREE.DirectionalLight(0xfffae0, 1.4);
+  dirLight.position.set(8, 14, 10);
+  dirLight.castShadow = true;
+  scene.add(dirLight);
+
+  const estate = buildEstateAR();
+  estate.scale.setScalar(0.2);
+  scene.add(estate);
+
+  let rot = 0;
+  renderer.setAnimationLoop(() => {
+    rot += 0.004;
+    estate.rotation.y = rot;
+    renderer.render(scene, camera);
+  });
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+}
+
+// ── Build mini estate model ──
+function mt(c, o = 1) {
+  const opt = { color: c };
+  if (o < 1) { opt.transparent = true; opt.opacity = o; }
+  return new THREE.MeshLambertMaterial(opt);
+}
+function m(g, geo, mat, x = 0, y = 0, z = 0) {
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, z);
+  mesh.castShadow = true;
+  g.add(mesh);
+  return mesh;
+}
+
+function buildEstateAR() {
+  const g = new THREE.Group();
+
+  // Ground
+  m(g, new THREE.BoxGeometry(26, 0.2, 22), mt(0x3a7d2c), 0, -0.1, 0);
+
+  // Road
+  m(g, new THREE.BoxGeometry(2.6, 0.1, 22), mt(0x3a3a3a), 0, 0.05, 0);
+  m(g, new THREE.BoxGeometry(5, 0.1, 26), mt(0x3a3a3a), 0, 0.05, 0);
+
+  // Blok A houses (orange)
+  [[-5.5,-8],[-5.5,-4.2],[-5.5,-.4],[-5.5,3.4],[-5.5,7.2],[-5.5,11]].forEach(([x,z]) => {
+    buildMiniHouseAR(g, x, z, 0xe8a87a, 0xc98050, true);
+  });
+
+  // Blok B houses (blue)
+  [[5.5,-8],[5.5,-4.2],[5.5,-.4],[5.5,3.4],[5.5,7.2],[5.5,11]].forEach(([x,z]) => {
+    buildMiniHouseAR(g, x, z, 0x7ab8ff, 0x4a88cc, false);
+  });
+
+  // Blok C houses (green) — wider
+  [[-10,-9.5],[-6,-9.5],[-2,-9.5],[2,-9.5],[6,-9.5],[10,-9.5]].forEach(([x,z]) => {
+    buildMiniHouseC(g, x, z);
+  });
+
+  // Trees
+  [-8,-4,0,4,8].forEach(z => { addTreeAR(g,-2.9,z); addTreeAR(g,2.9,z); });
+
+  // Park
+  m(g, new THREE.BoxGeometry(4.5, 0.14, 4), mt(0x4ab030), 0, 0.07, 8.5);
+  const pool = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.15, 16), mt(0x2080c0));
+  pool.position.set(0, 0.2, 8.5); g.add(pool);
+
+  // Gate
+  [[-2, 0], [2, 0]].forEach(([px]) => {
+    m(g, new THREE.BoxGeometry(0.55, 2.8, 0.55), mt(0xe8e0c8), px, 1.4, 13.5);
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), mt(0xc9a840));
+    ball.position.set(px, 2.95, 13.5); g.add(ball);
+  });
+  m(g, new THREE.BoxGeometry(4.6, 0.45, 0.5), mt(0xd4c8a0), 0, 2.5, 13.5);
+
+  return g;
+}
+
+function buildMiniHouseAR(g, x, z, wallC, roofC, facingLeft) {
+  const h = new THREE.Group();
+  m(h, new THREE.BoxGeometry(4.0, 0.15, 3.2), mt(0xa8a8a0), 0, 0.075, 0);
+  m(h, new THREE.BoxGeometry(4.0, 1.55, 3.0), mt(wallC), 0, 0.925, 0);
+  m(h, new THREE.BoxGeometry(4.0, 1.45, 3.0), mt(blend(wallC, 0xffffff, 0.15)), 0, 2.575, 0);
+  // Roof layers
+  m(h, new THREE.BoxGeometry(4.2, 0.38, 3.2), mt(roofC), 0, 3.32, 0);
+  m(h, new THREE.BoxGeometry(3.5, 0.35, 2.6), mt(roofC), 0, 3.68, 0);
+  m(h, new THREE.BoxGeometry(2.5, 0.28, 1.8), mt(roofC), 0, 3.98, 0);
+  m(h, new THREE.BoxGeometry(1.2, 0.18, 0.8), mt(roofC), 0, 4.22, 0);
+  // Windows
+  m(h, new THREE.BoxGeometry(1.5, 1.1, 0.07), mt(0x1a3a5c), 0, 0.72, 1.52);
+  m(h, new THREE.BoxGeometry(1.5, 1.35, 0.07), mt(0x4a6a80), 0, 2.575, 1.52);
+  // Door
+  m(h, new THREE.BoxGeometry(0.85, 1.9, 0.07), mt(0x5a3a18), facingLeft ? -0.8 : 0.8, 0.95, 1.54);
+  h.position.set(x, 0, z);
+  h.rotation.y = facingLeft ? Math.PI / 2 : -Math.PI / 2;
+  g.add(h);
+}
+
+function buildMiniHouseC(g, x, z) {
+  const h = new THREE.Group();
+  m(h, new THREE.BoxGeometry(5.2, 0.17, 3.8), mt(0xa0a098), 0, 0.085, 0);
+  m(h, new THREE.BoxGeometry(5.2, 1.65, 3.6), mt(0x90e090), 0, 0.995, 0);
+  m(h, new THREE.BoxGeometry(5.2, 1.55, 3.6), mt(blend(0x90e090, 0xffffff, 0.2)), 0, 2.745, 0);
+  m(h, new THREE.BoxGeometry(5.6, 0.13, 4.1), mt(0x343a30), 0, 3.38, 0);
+  m(h, new THREE.BoxGeometry(5.4, 0.38, 3.9), mt(0x4a9a4a), 0, 3.57, 0);
+  m(h, new THREE.BoxGeometry(4.6, 0.35, 3.1), mt(0x4a9a4a), 0, 3.93, 0);
+  m(h, new THREE.BoxGeometry(3.4, 0.28, 2.2), mt(0x4a9a4a), 0, 4.22, 0);
+  m(h, new THREE.BoxGeometry(5.2, 1.35, 0.09), mt(0x2a5a60), 0, 2.575, 1.86);
+  m(h, new THREE.BoxGeometry(1.8, 2.45, 0.06), mt(blend(0xaaccdd, 0xffffff, 0.3)), 0, 1.175, 1.88);
+  h.position.set(x, 0, z);
+  g.add(h);
+}
+
+function addTreeAR(g, x, z) {
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 1.4, 8), mt(0x5c3d1e));
+  trunk.position.set(x, 0.7, z); g.add(trunk);
+  [[0.55, 0.65, 1.55],[0.44, 0.6, 1.88],[0.3, 0.55, 2.16]].forEach(([r, h, y]) => {
+    const c = new THREE.Mesh(new THREE.ConeGeometry(r, h, 9), mt(0x228b22));
+    c.position.set(x, y, z); g.add(c);
+  });
+}
+
+function blend(a, b, t) {
+  const ar=(a>>16)&0xff,ag=(a>>8)&0xff,ab=a&0xff;
+  const br=(b>>16)&0xff,bg=(b>>8)&0xff,bb2=b&0xff;
+  return(Math.round(ar+(br-ar)*t)<<16)|(Math.round(ag+(bg-ag)*t)<<8)|Math.round(ab+(bb2-ab)*t);
+}
+
+function buildFloatingLabel(group) {
+  // Floating ring above estate
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(2.5, 0.04, 8, 48),
+    new THREE.MeshLambertMaterial({ color: 0xc9a840, transparent: true, opacity: 0.6 })
+  );
+  ring.position.set(0, 3.5, 0);
+  ring.rotation.x = Math.PI / 2;
+  group.add(ring);
+}
+
+function openTour(blok) {
+  window.location.href = `index.html#tour-${blok}`;
+}
+</script>
+</body>
+</html>

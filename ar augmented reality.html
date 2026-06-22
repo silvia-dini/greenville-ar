@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no"/>
+<title>GreenVille AR</title>
+<!-- AR.js + A-Frame (lebih stable dari MindAR) -->
+<script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+<script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&family=Cormorant+Garamond:ital,wght@0,300;1,400&display=swap');
+  :root{--gold:#c9a840;--gold-l:#e8c97a;--dark:#06090f;}
+
+  body{background:#000;font-family:'Outfit',sans-serif;overflow:hidden;}
+
+  /* ── Splash ── */
+  #splash{
+    position:fixed;inset:0;z-index:9999;
+    background:linear-gradient(145deg,#06090f,#0d1828);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:30px;text-align:center;
+    transition:opacity .6s ease;
+  }
+  #splash.hide{opacity:0;pointer-events:none;}
+  .sp-logo{font-family:'Cormorant Garamond',serif;font-size:3rem;color:#e8c97a;font-style:italic;margin-bottom:6px;}
+  .sp-sub{font-size:.6rem;letter-spacing:5px;color:#6a80a0;text-transform:uppercase;margin-bottom:50px;}
+  .sp-icon{font-size:4rem;margin-bottom:20px;animation:bounce 1.5s ease-in-out infinite;}
+  @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+  .sp-desc{font-size:.75rem;color:rgba(255,255,255,.55);line-height:1.8;margin-bottom:40px;max-width:290px;}
+  .sp-desc strong{color:#e8c97a;}
+  #btn-start-ar{
+    background:linear-gradient(135deg,#e8c97a,#c9a040);
+    color:#06090f;border:none;
+    padding:18px 50px;border-radius:50px;
+    font-size:1rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+    cursor:pointer;touch-action:manipulation;
+    box-shadow:0 10px 40px rgba(201,168,76,.4);
+    min-width:240px;min-height:60px;
+    -webkit-tap-highlight-color:transparent;
+    transition:.2s;
+  }
+  #btn-start-ar:active{transform:scale(.96);}
+  .sp-note{font-size:.58rem;color:#6a80a0;margin-top:16px;}
+
+  /* ── Top HUD ── */
+  #hud{
+    position:fixed;top:0;left:0;right:0;z-index:100;
+    padding:14px 16px;
+    background:linear-gradient(180deg,rgba(6,9,15,.92) 0%,transparent 100%);
+    display:none;align-items:center;justify-content:space-between;
+  }
+  #hud.show{display:flex;}
+  .hud-brand{font-family:'Cormorant Garamond',serif;font-size:1.15rem;color:#e8c97a;font-style:italic;}
+  #hud-pill{font-size:.58rem;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;background:rgba(6,9,15,.7);border:1px solid rgba(255,165,0,.35);color:#ffaa44;transition:.3s;}
+  #hud-pill.found{border-color:rgba(78,220,120,.4);color:#4edc78;}
+
+  /* ── Scan hint ── */
+  #scan-hint{
+    position:fixed;bottom:160px;left:50%;transform:translateX(-50%);
+    z-index:100;text-align:center;
+    display:none;
+    animation:float 2.5s ease-in-out infinite;
+    transition:opacity .4s;
+  }
+  #scan-hint.show{display:block;}
+  #scan-hint.hide{opacity:0;pointer-events:none;}
+  @keyframes float{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(-8px)}}
+  .hint-box{
+    width:170px;height:170px;border-radius:12px;
+    border:2px solid rgba(201,168,76,.5);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:rgba(6,9,15,.4);backdrop-filter:blur(6px);
+    margin:0 auto 12px;position:relative;overflow:hidden;
+  }
+  .hint-scan{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,#c9a840,transparent);animation:scanline 2s ease-in-out infinite;box-shadow:0 0 8px #c9a840;}
+  @keyframes scanline{0%{top:10%}100%{top:90%}}
+  .hint-icon{font-size:2.8rem;}
+  .hint-txt{font-size:.65rem;color:rgba(255,255,255,.7);letter-spacing:2px;text-transform:uppercase;}
+  .hint-sub{font-size:.55rem;color:#6a80a0;margin-top:4px;}
+
+  /* ── Info card ── */
+  #info-card{
+    position:fixed;bottom:0;left:0;right:0;z-index:200;
+    background:rgba(6,9,15,.97);backdrop-filter:blur(20px);
+    border-top:1px solid rgba(201,168,76,.2);border-radius:16px 16px 0 0;
+    padding:14px 16px 40px;
+    transform:translateY(100%);
+    transition:transform .45s cubic-bezier(.25,.8,.25,1);
+    display:none;
+  }
+  #info-card.ready{display:block;}
+  #info-card.show{transform:translateY(0);}
+  .ic-handle{width:32px;height:3px;background:rgba(255,255,255,.12);border-radius:2px;margin:0 auto 14px;}
+  .ic-title{font-family:'Cormorant Garamond',serif;font-size:1.3rem;color:#fff;margin-bottom:3px;}
+  .ic-sub{font-size:.56rem;color:#6a80a0;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px;}
+  .ic-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;}
+  .ic-stat{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:10px 6px;text-align:center;}
+  .ic-sv{font-size:.82rem;font-weight:700;color:#fff;display:block;}
+  .ic-sk{font-size:.5rem;letter-spacing:1px;text-transform:uppercase;color:#6a80a0;margin-top:2px;}
+  .ic-bloks{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:14px;}
+  .ic-blok{border-radius:8px;padding:12px 6px;text-align:center;border:1px solid;cursor:pointer;touch-action:manipulation;transition:.15s;-webkit-tap-highlight-color:transparent;}
+  .ic-blok:active{transform:scale(.94);}
+  .blok-A{background:rgba(232,168,122,.1);border-color:rgba(232,168,122,.4);}
+  .blok-B{background:rgba(122,184,255,.1);border-color:rgba(122,184,255,.4);}
+  .blok-C{background:rgba(144,224,144,.1);border-color:rgba(144,224,144,.4);}
+  .ic-blok-name{font-size:.72rem;font-weight:700;color:#fff;display:block;}
+  .ic-blok-price{font-size:.6rem;color:rgba(255,255,255,.5);display:block;margin-top:3px;}
+  .ic-blok-type{font-size:.48rem;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.3);}
+  .ic-btn{
+    display:block;width:100%;padding:14px;
+    background:linear-gradient(135deg,#e8c97a,#c9a040);color:#06090f;
+    border:none;border-radius:6px;
+    font-family:'Outfit',sans-serif;font-size:.72rem;font-weight:700;
+    letter-spacing:2px;text-transform:uppercase;
+    cursor:pointer;touch-action:manipulation;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .ic-btn:active{transform:scale(.98);}
+  .ic-btn-out{
+    display:block;width:100%;padding:12px;margin-top:8px;
+    background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#fff;
+    border-radius:6px;font-family:'Outfit',sans-serif;font-size:.68rem;font-weight:500;
+    letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;touch-action:manipulation;text-align:center;
+    -webkit-tap-highlight-color:transparent;
+    text-decoration:none;
+  }
+
+  /* ── Demo mode banner ── */
+  #demo-banner{
+    position:fixed;top:60px;left:50%;transform:translateX(-50%);
+    z-index:150;display:none;
+    background:rgba(122,184,255,.15);border:1px solid rgba(122,184,255,.3);
+    color:#7ab8ff;font-size:.6rem;letter-spacing:2px;text-transform:uppercase;
+    padding:6px 18px;border-radius:20px;white-space:nowrap;
+  }
+  #demo-banner.show{display:block;}
+</style>
+</head>
+<body>
+
+<!-- Splash / Permission -->
+<div id="splash">
+  <p class="sp-logo">GreenVille</p>
+  <p class="sp-sub">Augmented Reality · PBL UAS 2025</p>
+  <div class="sp-icon">📷</div>
+  <p class="sp-desc">
+    Tap tombol di bawah untuk mengaktifkan kamera.<br>
+    Lalu <strong>arahkan ke marker</strong> yang sudah dicetak —<br>
+    model 3D perumahan akan muncul!
+  </p>
+  <button id="btn-start-ar" onclick="startExperience()">
+    📷 &nbsp;Aktifkan Kamera AR
+  </button>
+  <p class="sp-note">Butuh izin kamera · Pastikan marker sudah dicetak</p>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <span class="hud-brand">GreenVille AR</span>
+  <span id="hud-pill">🔍 Cari Marker...</span>
+</div>
+
+<!-- Scan hint -->
+<div id="scan-hint">
+  <div class="hint-box">
+    <div class="hint-scan"></div>
+    <span class="hint-icon">🏠</span>
+  </div>
+  <p class="hint-txt">Arahkan ke Marker</p>
+  <p class="hint-sub">Cetak marker.svg lalu scan</p>
+</div>
+
+<!-- Demo mode banner -->
+<div id="demo-banner">💻 Mode Demo — Kamera tidak tersedia</div>
+
+<!-- AR Scene (AR.js) -->
+<a-scene id="ar-scene" style="display:none;"
+  embedded
+  arjs="sourceType:webcam; debugUIEnabled:false; detectionMode:mono_and_matrix; matrixCodeType:3x3;"
+  renderer="logarithmicDepthBuffer:true; antialias:true;"
+  vr-mode-ui="enabled:false">
+
+  <!-- Marker: pakai Hiro marker bawaan AR.js (paling mudah di-scan) -->
+  <a-marker id="ar-marker" preset="hiro">
+    <!-- Estate model akan di-inject via JS -->
+    <a-entity id="estate-entity" position="0 0 0" rotation="-90 0 0" scale="0.015 0.015 0.015">
+    </a-entity>
+  </a-marker>
+
+  <a-entity camera></a-entity>
+</a-scene>
+
+<!-- Info card -->
+<div id="info-card">
+  <div class="ic-handle"></div>
+  <h2 class="ic-title">GreenVille Estate</h2>
+  <p class="ic-sub">Augmented Reality · 3D Interaktif · PBL UAS 2025</p>
+  <div class="ic-stats">
+    <div class="ic-stat"><span class="ic-sv">18</span><span class="ic-sk">Total Unit</span></div>
+    <div class="ic-stat"><span class="ic-sv">3</span><span class="ic-sk">Tipe Blok</span></div>
+    <div class="ic-stat"><span class="ic-sv">2.8 Ha</span><span class="ic-sk">Luas Area</span></div>
+  </div>
+  <p style="font-size:.56rem;color:#6a80a0;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;">Pilih Blok → Lihat Room Tour</p>
+  <div class="ic-bloks">
+    <div class="ic-blok blok-A" onclick="goTour('A')">
+      <span class="ic-blok-name">Blok A</span>
+      <span class="ic-blok-price">Rp 620 Jt</span>
+      <span class="ic-blok-type">Type 45</span>
+    </div>
+    <div class="ic-blok blok-B" onclick="goTour('B')">
+      <span class="ic-blok-name">Blok B</span>
+      <span class="ic-blok-price">Rp 450 Jt</span>
+      <span class="ic-blok-type">Type 36</span>
+    </div>
+    <div class="ic-blok blok-C" onclick="goTour('C')">
+      <span class="ic-blok-name">Blok C</span>
+      <span class="ic-blok-price">Rp 850 Jt</span>
+      <span class="ic-blok-type">Type 60</span>
+    </div>
+  </div>
+  <button class="ic-btn" onclick="window.location.href='index.html'">🏡 Buka Maket 3D Interaktif</button>
+  <a class="ic-btn-out" href="index.html">← Kembali ke Halaman Utama</a>
+</div>
+
+<script>
+let arStarted = false;
+let markerVisible = false;
+let demoMode = false;
+
+function startExperience() {
+  // Hide splash
+  const splash = document.getElementById('splash');
+  splash.classList.add('hide');
+
+  setTimeout(() => {
+    splash.style.display = 'none';
+    tryStartAR();
+  }, 500);
+}
+
+function tryStartAR() {
+  // Check if camera available
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    startDemoMode();
+    return;
+  }
+
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    .then(stream => {
+      // Jangan stop stream — biarkan AR.js yang ambil alih kamera
+      startARMode();
+    })
+    .catch(err => {
+      console.warn('Camera denied:', err);
+      startDemoMode();
+    });
+}
+
+function startARMode() {
+  arStarted = true;
+
+  // Show AR scene
+  const scene = document.getElementById('ar-scene');
+  scene.style.display = 'block';
+
+  // Show HUD + scan hint
+  document.getElementById('hud').classList.add('show');
+  document.getElementById('scan-hint').classList.add('show');
+
+  // Info card ready
+  const card = document.getElementById('info-card');
+  card.classList.add('ready');
+
+  // Marker found/lost
+  const marker = document.getElementById('ar-marker');
+
+  marker.addEventListener('markerFound', () => {
+    markerVisible = true;
+    document.getElementById('hud-pill').textContent = '✓ Marker Terdeteksi!';
+    document.getElementById('hud-pill').classList.add('found');
+    document.getElementById('scan-hint').classList.add('hide');
+    card.classList.add('show');
+  });
+
+  marker.addEventListener('markerLost', () => {
+    markerVisible = false;
+    document.getElementById('hud-pill').textContent = '🔍 Cari Marker...';
+    document.getElementById('hud-pill').classList.remove('found');
+    document.getElementById('scan-hint').classList.remove('hide');
+    card.classList.remove('show');
+  });
+}
+
+function startDemoMode() {
+  demoMode = true;
+
+  // Show demo banner
+  document.getElementById('hud').classList.add('show');
+  document.getElementById('demo-banner').classList.add('show');
+  document.getElementById('hud-pill').textContent = '💻 Mode Demo';
+  document.getElementById('hud-pill').style.borderColor = 'rgba(122,184,255,.35)';
+  document.getElementById('hud-pill').style.color = '#7ab8ff';
+
+  // Show 3D fallback
+  startDemo3D();
+
+  // Show info card after short delay
+  const card = document.getElementById('info-card');
+  card.classList.add('ready');
+  setTimeout(() => card.classList.add('show'), 800);
+}
+
+// ── 3D Demo fallback (Three.js) ──
+function startDemo3D() {
+  const script1 = document.createElement('script');
+  script1.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+  script1.onload = init3DDemo;
+  document.head.appendChild(script1);
+}
+
+function init3DDemo() {
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:0;';
+  document.body.insertBefore(canvas, document.body.firstChild);
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x06090f);
+  renderer.shadowMap.enabled = true;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x06090f);
+
+  // Lights
+  scene.add(new THREE.AmbientLight(0xfff8e8, 0.6));
+  const sun = new THREE.DirectionalLight(0xfffae0, 1.4);
+  sun.position.set(8, 14, 10);
+  sun.castShadow = true;
+  scene.add(sun);
+  const fill = new THREE.DirectionalLight(0xb8cce4, 0.4);
+  fill.position.set(-5, 6, -5);
+  scene.add(fill);
+
+  const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 500);
+  camera.position.set(5, 14, 20);
+  camera.lookAt(0, 0.5, 0);
+
+  // Build estate
+  const estate = buildEstate3D();
+  estate.scale.setScalar(0.2);
+  scene.add(estate);
+
+  // Animate
+  let rot = 0;
+  renderer.setAnimationLoop(() => {
+    rot += 0.004;
+    estate.rotation.y = rot;
+    renderer.render(scene, camera);
+  });
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+}
+
+// ── Estate 3D builder ──
+function mt(c, o) {
+  const opt = { color: c };
+  if (o !== undefined && o < 1) { opt.transparent = true; opt.opacity = o; }
+  return new THREE.MeshLambertMaterial(opt);
+}
+function mb(g, w, h, d, mat, x, y, z) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  mesh.position.set(x, y, z);
+  mesh.castShadow = true;
+  g.add(mesh);
+  return mesh;
+}
+
+function buildEstate3D() {
+  const g = new THREE.Group();
+
+  // Ground
+  mb(g, 26, 0.18, 22, mt(0x3a7d2c), 0, -0.09, 0);
+
+  // Roads
+  mb(g, 2.6, 0.1, 22, mt(0x3a3a3a), 0, 0.04, 0);
+  mb(g, 5, 0.1, 26, mt(0x3a3a3a), 0, 0.04, 0);
+
+  // Blok A — orange warm
+  [[-5.5,-8],[-5.5,-4.2],[-5.5,-.4],[-5.5,3.4],[-5.5,7.2],[-5.5,11]].forEach(([x,z]) => {
+    addHouseA(g, x, z);
+  });
+
+  // Blok B — blue cool
+  [[5.5,-8],[5.5,-4.2],[5.5,-.4],[5.5,3.4],[5.5,7.2],[5.5,11]].forEach(([x,z]) => {
+    addHouseB(g, x, z);
+  });
+
+  // Blok C — green premium
+  [[-10,-9.5],[-6,-9.5],[-2,-9.5],[2,-9.5],[6,-9.5],[10,-9.5]].forEach(([x,z]) => {
+    addHouseC(g, x, z);
+  });
+
+  // Trees
+  [-8,-4,0,4,8].forEach(z => {
+    addTree(g, -2.9, z);
+    addTree(g,  2.9, z);
+  });
+
+  // Park
+  mb(g, 4.5, 0.14, 4, mt(0x4ab030), 0, 0.07, 8.5);
+  const pool = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.15, 16), mt(0x2080c0));
+  pool.position.set(0, 0.22, 8.5);
+  g.add(pool);
+
+  // Gate pillars
+  [[-2, 13.5],[2, 13.5]].forEach(([px, pz]) => {
+    mb(g, 0.55, 2.8, 0.55, mt(0xe8e0c8), px, 1.4, pz);
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), mt(0xc9a840));
+    ball.position.set(px, 2.95, pz);
+    g.add(ball);
+  });
+  mb(g, 4.6, 0.45, 0.5, mt(0xd4c8a0), 0, 2.5, 13.5);
+
+  return g;
+}
+
+function addHouseA(g, x, z) {
+  const h = new THREE.Group();
+  mb(h, 4.0, 0.15, 3.2, mt(0xa8a8a0), 0, 0.075, 0);
+  mb(h, 4.0, 1.55, 3.0, mt(0xe8a87a), 0, 0.925, 0);
+  mb(h, 4.0, 1.45, 3.0, mt(0xf0c090), 0, 2.575, 0);
+  mb(h, 4.2, 0.38, 3.2, mt(0xc98050), 0, 3.32, 0);
+  mb(h, 3.5, 0.35, 2.6, mt(0xb87040), 0, 3.68, 0);
+  mb(h, 2.4, 0.28, 1.8, mt(0xa86030), 0, 3.98, 0);
+  mb(h, 1.5, 1.1, 0.07, mt(0x1a3a5c), 0, 0.72, 1.52);
+  mb(h, 0.85, 1.9, 0.07, mt(0x5a3a18), -0.8, 0.95, 1.54);
+  h.position.set(x, 0, z);
+  h.rotation.y = Math.PI / 2;
+  g.add(h);
+}
+
+function addHouseB(g, x, z) {
+  const h = new THREE.Group();
+  mb(h, 3.2, 0.14, 2.6, mt(0xa8a8a0), 0, 0.07, 0);
+  mb(h, 3.2, 1.6, 2.4, mt(0x7ab8ff), 0, 0.94, 0);
+  mb(h, 3.2, 0.3, 2.55, mt(0x4a88cc), 0, 1.94, 0);
+  mb(h, 2.8, 0.28, 2.1, mt(0x3a78bb), 0, 2.22, 0);
+  mb(h, 2.0, 0.22, 1.5, mt(0x2a68aa), 0, 2.47, 0);
+  mb(h, 1.4, 1.1, 0.06, mt(0x1a3a5c), -0.55, 0.72, 1.22);
+  mb(h, 0.85, 1.45, 0.07, mt(0x4a5a78), 0.7, 0.94, 1.22);
+  h.position.set(x, 0, z);
+  h.rotation.y = -Math.PI / 2;
+  g.add(h);
+}
+
+function addHouseC(g, x, z) {
+  const h = new THREE.Group();
+  mb(h, 5.2, 0.17, 3.8, mt(0xa0a098), 0, 0.085, 0);
+  mb(h, 5.2, 1.65, 3.6, mt(0x90e090), 0, 0.995, 0);
+  mb(h, 5.2, 1.55, 3.6, mt(0xb0f0b0), 0, 2.745, 0);
+  mb(h, 5.6, 0.13, 4.1, mt(0x343a30), 0, 3.38, 0);
+  mb(h, 5.4, 0.38, 3.9, mt(0x4a9a4a), 0, 3.57, 0);
+  mb(h, 4.4, 0.32, 3.0, mt(0x3a8a3a), 0, 3.93, 0);
+  mb(h, 1.8, 2.45, 0.06, mt(0x2a5a60, 0.5), 0, 1.175, 1.88);
+  h.position.set(x, 0, z);
+  g.add(h);
+}
+
+function addTree(g, x, z) {
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 1.4, 8), mt(0x5c3d1e));
+  trunk.position.set(x, 0.7, z);
+  trunk.castShadow = true;
+  g.add(trunk);
+  [[0.55, 0.65, 1.55],[0.44, 0.6, 1.88],[0.3, 0.55, 2.16]].forEach(([r, h, y]) => {
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(r, h, 9), mt(0x228b22));
+    cone.position.set(x, y, z);
+    cone.castShadow = true;
+    g.add(cone);
+  });
+}
+
+function goTour(blok) {
+  window.location.href = 'index.html?tour=' + blok;
+}
+</script>
+</body>
+</html>
